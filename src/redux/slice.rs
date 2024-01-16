@@ -12,6 +12,14 @@ pub trait Slice<State, Action> {
 macro_rules! build_state {
     ($vis:vis $struct_name:ident, $actions_name:ident, $($slice:ty),+) => {
         paste::paste! {
+            // We generate the root state struct, with a field for each slice.
+            // For example, to generate a state MyState with the FooSlice and
+            // BarSlice slices, we have the following result:
+            //
+            // struct MyState {
+            //   foo_slice: FooSlice,
+            //   bar_slice: BarSlice
+            // }
             #[derive(Debug, PartialEq, Default, Clone)]
             $vis struct $struct_name {
                 $(
@@ -19,10 +27,18 @@ macro_rules! build_state {
                 )+
             }
 
+            // We generate one "routing" action for each slice,
+            // plus the Reset, Id and Restore utility actions.
             $vis enum [<$actions_name>] {
+                /// Returns the state without modification.
+                Id,
+                /// Resets the state to its default value.
                 Reset,
+                /// Resets the state to the specified value.
                 Restore($struct_name),
                 $(
+                    // One routing action for each slice that serves
+                    // as a wrapper for this slice's specific actions.
                     [<$slice>](<$slice as HasActionType>::ActionType),
                 )+
             }
@@ -30,6 +46,7 @@ macro_rules! build_state {
             impl Slice<$struct_name, [<$actions_name>]> for $struct_name {
                 fn mutate(self, action: [<$actions_name>]) -> $struct_name {
                     match action {
+                        [<$actions_name>]::Id => self,
                         [<$actions_name>]::Reset => Self::default(),
                         [<$actions_name>]::Restore(s) => s,
                         $(
@@ -43,6 +60,17 @@ macro_rules! build_state {
                     }
                 }
             }
+
+            // We also implement Into for each slice so that we
+            // can automatically wrap a slice action into the root
+            // action type, useful to reduce boilerplate
+            $(
+                impl Into<$actions_name> for <$slice as HasActionType>::ActionType {
+                    fn into(self) -> $actions_name {
+                        <$actions_name>::[<$slice>](self)
+                    }
+                }
+            )+
         }
     };
 }
@@ -135,7 +163,12 @@ mod test {
         assert_eq!(store.get_state().preferences.theme, Theme::Light);
         assert_eq!(store.get_state().settings.enable_voiceover, false);
 
-        store.dispatch(set_theme(Theme::Dark));
+        store.dispatch(Actions::Id);
+
+        assert_eq!(store.get_state().preferences.theme, Theme::Light);
+        assert_eq!(store.get_state().settings.enable_voiceover, false);
+
+        store.dispatch(PreferenceActions::SetTheme(Theme::Dark).into());
 
         assert_eq!(store.get_state().preferences.theme, Theme::Dark);
         assert_eq!(store.get_state().settings.enable_voiceover, false);

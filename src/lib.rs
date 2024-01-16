@@ -4,6 +4,8 @@ pub mod encryption;
 pub mod serde;
 pub mod traits;
 pub mod redux;
+pub mod cache;
+pub mod graphics;
 
 type Pair<T> = (T, T);
 
